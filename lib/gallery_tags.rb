@@ -1,5 +1,5 @@
 module GalleryTags
-  #tags available globally, not just on GalleryPages
+  #tags available globally, not just on GalleryPages   
   include Radiant::Taggable
   
   class GalleryTagError < StandardError; end
@@ -10,9 +10,11 @@ module GalleryTags
   
   desc %{    
     Usage:
-    <pre><code><r:galleries:each [order='order' by='by' limit='limit' offset='offset' level='top|current|bottom|all' 
-      keywords='key1,key2,key3' current_keywords='is|is_not']>...</r:galleries:each></code></pre>
-      Iterates through all gallery items keywords=(manual entered keywords) and/or current_keywords=(is|is_not) }
+    <pre><code><r:galleries:each [order='order' by='by' limit='limit' 
+      offset='offset' level='top|current|bottom|all' keywords='key1,key2,key3' 
+      current_keywords='is|is_not']>...</r:galleries:each></code></pre>
+      Iterates through all gallery items keywords=(manual entered keywords) 
+      and/or current_keywords=(is|is_not) }
   tag "galleries:each" do |tag|
     content = ''
     options = {}
@@ -57,10 +59,12 @@ module GalleryTags
     order = (%w[ASC DESC].include?(tag.attr['order'].to_s.upcase)) ? tag.attr['order'] : "ASC"
     options[:order] = "#{by} #{order}"  
     galleries = Gallery.find(:all, options).uniq unless @current_keywords.nil? && tag.attr['current_keywords'] == 'is'
+    
     if !@current_keywords.nil? && tag.attr['current_keywords'] == 'is_not' && galleries.length > 0                                                   
       options.merge!(:conditions => ['galleries.id NOT IN (?) AND hidden =? AND external =?', galleries, false, false])   
       galleries = Gallery.find(:all, options).uniq
     end
+    
     galleries.each do |gallery|
       tag.locals.gallery = gallery
       content << tag.expand
@@ -77,17 +81,61 @@ module GalleryTags
     tag.expand unless tag.locals.gallery.nil? && tag.attr['fail_silently']
   end
   
+  desc %{    
+    Usage:
+    <pre><code><r:gallery:if_current>...render content...</r:gallery:if_current></code></pre> 
+    If gallery is current continue }  
   tag 'gallery:if_current' do |tag|    
-    tag.expand if @current_gallery
+    tag.expand if @current_gallery && @current_gallery == tag.locals.gallery
   end  
-  
+
+  desc %{    
+    Usage:
+    <pre><code><r:gallery:unless_current>...render content...</r:gallery:unless_current></code></pre> 
+    Unless gallery is current continue }  
   tag 'gallery:unless_current' do |tag|    
-    tag.expand unless @current_gallery
+    tag.expand unless @current_gallery && @current_gallery == tag.locals.gallery
+  end
+
+  desc %{    
+    Usage:
+    <pre><code><r:gallery:current>...render content...</r:gallery:current></code></pre> 
+    For the current gallery content }  
+  tag 'gallery:current' do |tag|    
+    tag.locals.gallery = @current_gallery
+    tag.expand
+  end
+
+  desc %{    
+    Usage:
+    <pre><code><r:gallery:keywords:if_current>...render content...</r:gallery:keywords:if_current></code></pre> 
+    If gallery keywords are available continue }
+  tag 'gallery:keywords:if_current' do |tag|    
+    tag.expand if @current_keywords
+  end  
+
+  desc %{    
+    Usage:
+    <pre><code><r:gallery:keywords:unless_current>...render content...</r:gallery:keywords:unless_current></code></pre> 
+    Unless gallery keywords are available continue }
+  tag 'gallery:keywords:unless_current' do |tag|    
+    tag.expand unless @current_keywords
   end
   
-  tag 'gallery:current' do |tag|    
-    tag.locals.item = @current_gallery
-    tag.expand
+  desc %{                 
+    Usage:
+    <pre><code><r:gallery:keywords:current /></code></pre>
+    Provides keywords for current and children galleries, use
+    separator="separator_string" to specify the character between keywords }  
+  tag 'gallery:keywords:current' do |tag|
+    gallery = tag.locals.gallery        
+    content = ""        
+    joiner = tag.attr['separator'] ? tag.attr['separator'] : ' '
+    gallery.gallery_keywords.find(:all, :conditions => { :keyword => @current_keywords }).uniq.each do | keyword |
+      tag.locals.uniq_keywords = keyword
+      content << tag.expand
+    end
+    content.blank? ? @current_keywords.join( joiner ) : content
   end
   
   desc %{    
@@ -96,7 +144,7 @@ module GalleryTags
     Provides name for current gallery, safe is to make safe for web }
   tag "gallery:name" do |tag|
     gallery = tag.locals.gallery
-    name = tag.attr['safe'] ? gallery.name.gsub(/[\s~\.:;+=]+/, '_').downcase : gallery.name
+    name = tag.attr['safe'] ? websafe( gallery.name ) : gallery.name
   end
 
   desc %{
@@ -106,8 +154,7 @@ module GalleryTags
   tag "gallery:slug" do |tag|
     gallery = tag.locals.gallery
     gallery.slug
-  end
-
+  end 
   
   desc %{                 
     Usage:
@@ -115,10 +162,9 @@ module GalleryTags
     Provides keywords for current and children galleries, use
     separator="separator_string" to specify the character between keywords }
   tag "gallery:keywords" do |tag|
-    gallery = tag.locals.gallery    
-    joiner = tag.attr['separator'] ? tag.attr['separator'] : ' ' 
-    keys = tag.attr['safe'] ? gallery.keywords.gsub(/[\s~\.:;+=]+/, '_').downcase : gallery.keywords
-    keys.gsub(/\,/, joiner);
+    gallery = tag.locals.gallery     
+    keys = tag.attr['safe'] ? gallery.keywords{ |k| websafe(k) } : gallery.keywords
+    keys.join( tag.attr['separator'] ? tag.attr['separator'] : ' ' )
     tag.expand
   end                            
 
@@ -130,36 +176,64 @@ module GalleryTags
     content =''
     gallery = tag.locals.gallery
     gallery.gallery_keywords.uniq.each do |key|
-      tag.locals.uniq_keywords = key
+      tag.locals.uniq_keyword = key
       content << tag.expand
     end
     content
-  end 
+  end  
   
   desc %{
     Usage:
     <pre><code><r:gallery:keywords:keyword [safe='true']/></code></pre>
     Get the keyword of the current gallery:keywords loop } 
   tag 'gallery:keywords:keyword' do |tag|
-    gallery_keyword = tag.locals.uniq_keywords
-    keys = tag.attr['safe'] ? gallery_keyword.keyword.gsub(/[\s~\.:;+=]+/, '_').downcase : gallery_keyword.keyword
+    keyword = tag.locals.uniq_keyword.keyword
+    k = tag.attr['safe'] ? websafe( keyword ) : keyword
   end
        
   desc %{
     Usage:
-    <pre><code><r:gallery:keywords:link [*options]/></code></pre>
+    <pre><code><r:gallery:keywords:description /></code></pre>
+    Get the description for the current keyword in gallery:keywords loop } 
+  tag 'gallery:keywords:description' do |tag|
+    tag.locals.uniq_keyword.description
+  end
+  
+  desc %{
+    Usage:
+    <pre><code><r:gallery:keywords:link [*options] [current_gallery='use']/></code></pre>
     Get the keyword and creates a link for the current gallery:keywords loop 
     options are rendered inline as key:value pairs i.e. class='' id='', etc.}    
   tag 'gallery:keywords:link' do |tag|
-    keyword = tag.locals.uniq_keywords ? tag.locals.uniq_keywords.keyword : tag.locals.gallery.keywords
+    keyword = tag.locals.uniq_keyword.keyword
     options = tag.attr.dup
     attributes = options.inject('') { |s, (k, v)| s << %{#{k.downcase}="#{v}" } }.strip
     attributes = " #{attributes}" unless attributes.empty?
-    text = tag.double? ? tag.expand : tag.render('name')  
-    gallery_url = File.join(tag.render('url'))
-    %{<a href="#{gallery_url[0..-2]}?keywords=#{keyword.gsub(/[\s~\.:;+=]+/, '_')}"#{attributes}>#{keyword}</a>}
+    gallery_url = File.join( tag.render('url'), tag.attr['current_gallery'] ? tag.locals.gallery.slug : '' ).gsub(/\/$/,'')
+    %{<a href="#{gallery_url}?keywords=#{keyword.gsub(/[\s~\.:;+=]+/, '_')}"#{attributes}>#{keyword}</a>}
   end
   
+  desc %{                 
+    Usage:
+    <pre><code><r:gallery:keywords:current /></code></pre>
+    Provides keywords for current and children galleries, use
+    separator="separator_string" to specify the character between keywords }  
+  tag 'gallery:keywords:current' do |tag|
+    gallery = tag.locals.gallery        
+    content = ""        
+    joiner = tag.attr['separator'] ? tag.attr['separator'] : ' '
+    gallery.gallery_keywords.find(:all, :conditions => { :keyword => @current_keywords }).uniq.each do | key |
+      tag.locals.uniq_keyword = key
+      content << tag.expand
+    end
+    key = content.blank? ? @current_keywords.join( joiner ) : content
+  end
+  
+  desc %{
+     Usage:
+     <pre><code><r:gallery:breadcrumbs /></code></pre>
+     Breadcrumb to the current gallery 
+  }  
   tag 'gallery:breadcrumbs' do |tag|
     gallery = find_gallery(tag)
     breadcrumbs = []
@@ -183,6 +257,15 @@ module GalleryTags
     gallery = tag.locals.gallery
     gallery.description
   end  
+
+  desc %{    
+    Usage:
+    <pre><code><r:gallery:location /></code></pre>
+    Provides location for current gallery }
+  tag "gallery:location" do |tag|
+    gallery = tag.locals.gallery
+    gallery.location
+  end
   
   desc %{    
     Usage:
@@ -307,6 +390,10 @@ module GalleryTags
   
 
   protected
+
+  def websafe( string )
+    string.gsub(/[\s~\.,:;+=]+/, '_').downcase
+  end 
   
   def find_gallery(tag)  
     if tag.locals.gallery

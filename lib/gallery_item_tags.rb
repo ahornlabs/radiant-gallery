@@ -1,6 +1,6 @@
 module GalleryItemTags
   #tags available globally, not just on GalleryPages
-  include Radiant::Taggable          
+  include Radiant::Taggable
   
   class GalleryTagError < StandardError; end
   
@@ -36,8 +36,10 @@ module GalleryItemTags
     options[:offset] = tag.attr['offset'] ? tag.attr['offset'].to_i  : 0
     options[:conditions] = { "#{GalleryItem.table_name}.parent_id" => nil}  
     
-    if !tag.attr['keywords'].nil? || !tag.attr['current_keywords'].nil?                                                                                                                                  
+    use_slug_as_keyword = tag.attr['use_slug_as_keyword']
+    if !tag.attr['keywords'].nil? || !tag.attr['current_keywords'].nil? || use_slug_as_keyword
       keywords = !tag.attr['keywords'].nil? ? tag.attr['keywords'].split(',') : []
+      keywords.push(tag.locals.page.slug) if use_slug_as_keyword
       if (tag.attr['current_keywords'] == 'is' || tag.attr['current_keywords'] == 'is_not') && !tag.globals.page.request.parameters['keywords'].nil?
         @current_keywords = tag.globals.page.request.parameters['keywords'].split(',') if !tag.globals.page.request.parameters['keywords'].nil?
         if !@current_keywords.nil? && @current_keywords.length > 0
@@ -103,7 +105,7 @@ module GalleryItemTags
     Provides name for current gallery item, safe is to make safe for web }
   tag "gallery:item:name" do |tag|      
     item = find_item(tag)
-    name = tag.attr['safe'] ? item.name.downcase.gsub(/[\s~\.:;+=]+/, '_') : item.name
+    name = tag.attr['safe'] ? websafe( item.name ) : item.name
   end 
   
   desc %{
@@ -112,11 +114,46 @@ module GalleryItemTags
     Provides keywords for current gallery item, use 
     separator="separator_string" to specify the character between keywords}
   tag "gallery:item:keywords" do |tag|      
-    item = find_item(tag)    
-    joiner = tag.attr['separator'] ? tag.attr['separator'] : ' '  
-    keys = tag.attr['safe'] ? item.keywords.downcase.gsub(/[\s~\.:;+=]+/, '_') : item.keywords
-    keys.gsub(/\,/, joiner);
+    item = find_item(tag)   
+    keys = tag.attr['safe'] ? item.keywords { |k| websafe( k ) } : item.keywords
+    keys.join( tag.attr['separator'] ? tag.attr['separator'] : ' ' );
   end 
+
+  desc %{
+    Usage:
+    <pre><code><r:gallery:item:credits /></code></pre>
+    Provides the Credits string for current gallery item }
+  tag "gallery:item:credits" do |tag|      
+    item = find_item(tag)
+    item.credits
+  end  
+  
+  desc %{
+    }
+  tag "gallery:item:if_credits" do |tag|      
+    item = find_item(tag)
+    
+    tag.expand unless item.credits.nil? || item.credits.empty?
+  end  
+  
+  desc %{
+    Usage:
+    <pre><code><r:gallery:item:url /></code></pre>
+    Provides the URL for current gallery item }
+  tag "gallery:item:url" do |tag|      
+    item = find_item(tag)
+    item.url
+  end  
+  
+  desc %{
+    Usage:
+    <pre><code><r:gallery:item:if_url ><a href="<r:gallery:item:url />">Link</a></r:gallery:item:if_url></code></pre>
+    Processes tag  }
+  tag "gallery:item:if_url" do |tag|      
+    item = find_item(tag)
+    
+    tag.expand unless item.url.nil? || item.url.empty?
+  end  
   
   desc %{
     Usage:
@@ -133,7 +170,7 @@ module GalleryItemTags
     Provides link for current gallery item }
   tag "gallery:item:link" do |tag|  
     item = find_item(tag)
-    %{<a href="#{item.public_filename}">#{item.name}</a>}
+    %{<a href="#{image_path(item)}">#{item.name}</a>}
   end
   
   desc %{
@@ -151,16 +188,20 @@ module GalleryItemTags
     Provides path for current gallery item }
   tag "gallery:item:path" do |tag|
     item = find_item(tag)
-    item.public_filename
-  end
+    image_path(item)
+end
   
   desc %{
     Usage:
-    <pre><code><r:gallery:item:page_url/></code></pre>
-    Provides page url for current gallery item }
+    <pre><code><r:gallery:item:page_url [page_url='/page-slug/'] /></code></pre>
+    Provides page url for current gallery item. 
+    *Note:* page_url is optional for specifying a page different to the current }
   tag "gallery:item:page_url" do |tag|
     item = find_item(tag)
-    File.join(tag.render('url'), item.gallery.url(self.base_gallery_id), "#{item.id}.#{item.extension}/show")
+    url = tag.attr['base_url'] ? tag.attr['base_url'] : self.url
+    url = File.join( url, item.gallery.url( self.base_gallery_id ), "#{item.id}.#{item.extension}/show" )
+    url = '/' + url unless url =~ /^\//
+    url
   end
   
   desc %{    
@@ -211,25 +252,33 @@ module GalleryItemTags
   
   desc %{
     Usage:
-    <pre><code><r:gallery:item:next_page_url /></code></pre>
-    Provides page url for next gallery item }
+    <pre><code><r:gallery:item:next_page_url [page_url='/page-slug/'] /></code></pre>
+    Provides page url for next gallery item.
+    *Note:* page_url is optional for specifying a page different to the current }
   tag "gallery:item:next_page_url" do |tag|
     item = find_item(tag)    
     unless item.last?
-      next_item = GalleryItem.find(:first, :conditions => ["gallery_id = ? AND position = ? AND parent_id IS NULL", item.gallery.id, item.position + 1, ]) #item.lower_item      
-      File.join(tag.render('url'), @current_gallery.url(self.base_gallery_id), "#{next_item.id}.#{next_item.extension}/show")
+      next_item = GalleryItem.find(:first, :conditions => ["gallery_id = ? AND position = ? AND parent_id IS NULL", item.gallery.id, item.position + 1, ]) #item.lower_item
+      url = tag.attr['base_url'] ? tag.attr['base_url'] : tag.locals.page.url
+      url = File.join(url, @current_gallery.url(self.base_gallery_id), "#{next_item.id}.#{next_item.extension}/show") 
+      url = '/' + url unless url =~ /^\//
+      url
     end
   end
   
   desc %{
     Usage:
-    <pre><code><r:gallery:item:prev_page_url /></code></pre>
-    Provides page url for previous gallery item }
+    <pre><code><r:gallery:item:prev_page_url [page_url='/page-slug/'] /></code></pre>
+    Provides page url for previous gallery item,
+    *Note:* page_url is optional for specifying a page different to the current }
   tag "gallery:item:prev_page_url" do |tag|
     item = find_item(tag)
     unless item.position == 0
       prev_item = GalleryItem.find(:first, :conditions => ["gallery_id = ? AND position = ? AND parent_id IS NULL", item.gallery.id, item.position - 1, ]) #item.higher_item
-      File.join(tag.render('url'), @current_gallery.url(self.base_gallery_id), "#{prev_item.id}.#{prev_item.extension}/show")
+      url = tag.attr['base_url'] ? tag.attr['base_url'] : tag.locals.page.url
+      url = File.join(url, @current_gallery.url(self.base_gallery_id), "#{prev_item.id}.#{prev_item.extension}/show")
+      url = '/' + url unless url =~ /^\//
+      url
     end
   end
   
@@ -260,7 +309,7 @@ module GalleryItemTags
     item = find_item(tag)
     options = {}
     [:width, :height, :prefix, :geometry].each{|symbol| options[symbol] = tag.attr[symbol.to_s] if tag.attr[symbol.to_s] }
-    item.thumb(options).public_filename
+    image_path(item.thumb(options))
   end
   
   tag 'gallery:children' do |tag|
@@ -269,7 +318,10 @@ module GalleryItemTags
   end
 
 protected
-
+  def websafe( string )
+    string.gsub(/[\s~\.,:;+=]+/, '_').downcase
+  end
+  
   def find_item(tag)
     if tag.locals.item 
       tag.locals.item
@@ -281,6 +333,10 @@ protected
       position = gallery.items.count if tag.attr['position'] == 'last'
       i = gallery.items.find_by_position(position.to_i)    
     end
+  end
+  
+  def image_path(image)
+    response.template.send(:path_to_image, image.public_filename)
   end
 
 end

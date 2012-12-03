@@ -1,4 +1,5 @@
 class GalleriesController < ApplicationController
+  DefaultKeyword = 'add new keyword'
   helper :gallery_items
   before_filter :find_gallery, :except => [:index, :list, :new, :create, :reorder, :update_order]
   
@@ -13,6 +14,7 @@ class GalleriesController < ApplicationController
   end
   
   def show
+    @keywords = GalleryKeyword.all
     respond_to do |format|    
       format.html
       format.xml { render :xml => @gallery }
@@ -21,7 +23,7 @@ class GalleriesController < ApplicationController
   
   def new
     @gallery = Gallery.new    
-
+    @keywords = GalleryKeyword.all
     respond_to do |format|    
       format.html
       format.xml { render :xml => @gallery }
@@ -30,9 +32,8 @@ class GalleriesController < ApplicationController
   
   def create
     @gallery = Gallery.new(params[:gallery].merge({:parent_id => params[:parent_id]}))
-    
     respond_to do |format|
-      if @gallery.save
+      if set_keywords && @gallery.save
         flash[:notice] = "Your gallery has been saved below." 
         format.html { redirect_to( params[:continue] ? edit_admin_gallery_url(@gallery) : admin_gallery_url(@gallery)) }
         format.xml  { render :xml => @gallery, :status => :created, :location => @gallery }
@@ -45,14 +46,15 @@ class GalleriesController < ApplicationController
   end
   
   def edit
+    @keywords = GalleryKeyword.all
     respond_to do |format|
       format.html
     end    
   end
   
-  def update
+  def update 
     respond_to do |format|
-      if @gallery.update_attributes(params[:gallery])
+      if set_keywords && @gallery.update_attributes(params[:gallery]) 
         flash[:notice] = "Your gallery has been saved below."
         format.html { redirect_to( params[:continue] ? edit_admin_gallery_url(@gallery) : admin_gallery_url(@gallery)) }
         format.xml  { head :ok }
@@ -99,10 +101,23 @@ class GalleriesController < ApplicationController
       end
       redirect_to admin_galleries_url
     end    
-  end
-     
+  end 
    
-private  
+private
+
+  def set_keywords
+    @gallery.gallery_keywords = GalleryKeyword.find( params[:keywords] ) if params[:keywords]
+
+    if params[:new_keyword] && DefaultKeyword != params[:new_keyword]
+      
+      @keyword = GalleryKeyword.new( :keyword => params[:new_keyword] )    
+      unless @keyword.save && @gallery.gallery_keywords << @keyword 
+        return false
+      end
+    end
+
+    return true
+  end  
   
   def find_gallery
     @gallery = Gallery.find(params[:id])
