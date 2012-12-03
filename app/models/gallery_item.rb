@@ -12,7 +12,7 @@ class GalleryItem < ActiveRecord::Base
     end
   end
   
-  attr_accessible :name, :url, :credits, :description, :uploaded_data, :keywords
+  attr_accessible :name, :description, :uploaded_data, :keywords
     
   has_attachment :storage => Radiant::Config["gallery.storage"] ? Radiant::Config["gallery.storage"].to_sym : :file_system,
     :path_prefix => Radiant::Config["gallery.path_prefix"],
@@ -38,11 +38,7 @@ class GalleryItem < ActiveRecord::Base
   before_destroy :update_positions
   
   after_attachment_saved do |item|
-	if item.parent.nil? then
-		item.generate_default_thumbnails
-		# load exif data of original file
-		item.create_item_infos
-	end
+    item.generate_default_thumbnails if item.parent.nil?
   end       
 
   before_thumbnail_saved do |thumbnail|
@@ -75,17 +71,18 @@ class GalleryItem < ActiveRecord::Base
     end
   end
   
-  def keywords(&block)                         
-    arr = []   
-    block ||= Proc.new {|v| v }
+  def keywords                         
+    str = ''                 
     if self.gallery_keywords.length > 0 
       self.gallery_keywords.uniq.each do |key|
-        arr << block.call( key.keyword )
+        str += key.keyword
+        str += ','
       end                         
+      str = str.slice(0..-2)                        
     else                
-      arr << self.gallery.keywords          
+      str += self.gallery.keywords          
     end                           
-    return arr
+    return str
   end           
   
   def keywords=(keywords) 
@@ -129,26 +126,6 @@ class GalleryItem < ActiveRecord::Base
     end
   end  
   
-  def create_item_infos
-    if self.jpeg? then
-      if Radiant::Config["gallery.storage"].eql?("s3")
-        picture = Kernel.open(item.s3_url) do |file|
-          EXIFR::JPEG.new(file)
-        end
-      else
-        picture = EXIFR::JPEG.new(self.full_filename)
-      end
-		names = Radiant::Config['gallery.exif_names'].split(" ")
-		names.each do |name|
-			value = picture.exif.try(name.to_sym)
-			# f_numbers are stored as rationals (f 4.5 equals to f_number value '9/2')
-			# if doing just to_f, the value will be stored as integer in database (4.5 -> 4)
-			value = value.to_f.to_s if name == "f_number"
-			self.infos.create(:gallery_item_id => self.id, :name => name, :value => value)
-		end
-	end
-  end  
-
   protected
 
   def set_filename_as_name
@@ -180,5 +157,5 @@ class GalleryItem < ActiveRecord::Base
     scale_ratio = (pic_ratio > aspect_ratio) ?  max_width.to_f / width.to_f : max_height.to_f / height.to_f  
     [(width * scale_ratio).to_i, (height * scale_ratio).to_i]
   end
-     
+    
 end

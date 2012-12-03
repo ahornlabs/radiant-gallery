@@ -51,13 +51,13 @@ class Gallery < ActiveRecord::Base
     File.join(self.absolute_path, 'thumbs')
   end
   
-  def keywords(&block)
-    arr = []
-    block ||= Proc.new {|v| v }
+  def keywords
+    str =''     
     self.gallery_keywords.each do |key|
-      arr << block.call( key.keyword )
+      str += key.keyword
+      str += ','
     end                                   
-    return arr
+    str.slice(0..-2)
   end               
   
   def keywords=(keywords) 

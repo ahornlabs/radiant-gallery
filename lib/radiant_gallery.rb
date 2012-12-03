@@ -2,7 +2,7 @@ unless defined? RadiantGallery::Version
   module RadiantGallery
     module Version
       Major = '0'
-      Minor = '9'
+      Minor = '8'
       Tiny  = '1'
     
       class << self

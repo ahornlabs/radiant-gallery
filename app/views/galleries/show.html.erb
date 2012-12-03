@@ -1,10 +1,11 @@
-<% include_javascript Radiant::Version.to_s.to_f < 0.9 ? 'extensions/gallery/dragdrop' : 'admin/dragdrop' %>
-<% include_javascript Radiant::Version.to_s.to_f < 0.9 ? 'extensions/gallery/controls' : 'admin/controls' %>
+<% include_javascript 'extensions/gallery/dragdrop' %>
+<% include_javascript 'extensions/gallery/controls' %>
 <% include_javascript 'extensions/gallery/slider' %>
 <% include_javascript 'extensions/gallery/lite_sortable'%>
 <% include_javascript 'extensions/gallery/gallery/panel' %>
 <% include_javascript 'extensions/gallery/gallery/edit_form' %>
 <% include_javascript 'extensions/gallery/gallery/utils' %>
+<% include_javascript 'extensions/gallery/gallery/zoom_slider' %>
 <% include_javascript 'extensions/gallery/gallery/zoom_slider' %>
 
 
@@ -21,8 +22,8 @@
 <% end -%> 
 
 <%= gallery_toolbar %>	
-<%= gallery_zoom_slider %>
-
+<%= gallery_zoom_slider %>  
+  
 <div class="clear">&nbsp;</div>
 
 <div class="gallery items list" id="gallery_items_panel">
@@ -46,23 +47,13 @@
         <input type="text" id="edit-item-name" size="30">  
       </div>
       <div>      
-        <label for="edit-item-url">Link URL</label>
-        <input type="text" id="edit-item-url" size="30">  
-      </div>
-      <div>      
-        <label for="edit-item-credits">Credits</label>
-        <input type="text" id="edit-item-credits" size="30">  
-      </div>
-      <div>      
         <label for="edit-item-description">Description</label>
         <textarea id="edit-item-description" cols="40" rows="12"></textarea>
-			</div>  
-			
-			<div>      
-				<label for="edit-item-keywords">Keywords</label>
-				<input type="text" id="edit-item-keywords" size="30">
+      </div>  
+      <div>      
+        <label for="edit-item-keywords">Keywords</label>
+        <input type="text" id="edit-item-keywords" size="30">
       </div>
-
       <p>
         <img id="edit-spinner" src="/images/admin/spinner.gif" style="display: none;"/>
         <input id="edit-submit" type="submit" value="Save" /> or <a onclick="Gallery.EditForm.close(); return false;" href="#" class="close-link">Close</a>
